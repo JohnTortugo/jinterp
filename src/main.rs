@@ -17,5 +17,5 @@ fn main() {
 
     let java_class = spec::ClassFile::load(&mut buf_reader);
 
-    java_class.print();
+    java_class.print(true, false, false, true, true);
 }
