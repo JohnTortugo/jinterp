@@ -7,6 +7,7 @@ use crate::spec;
 use crate::attributes;
 use crate::constantpool;
 
+#[derive(Clone)]
 pub struct AttributeInfo {
     pub name : String,
     pub source_file : Option<String>,
@@ -15,11 +16,13 @@ pub struct AttributeInfo {
     pub code : Option<Code_attribute>,
 }
 
+#[derive(Clone)]
 pub struct BootstrapMethods_attribute {
     pub bootstrap_method_ref : u16,
     pub bootstrap_arguments : Vec<u16>,
 }
 
+#[derive(Clone)]
 pub struct InnerClasses_attribute {
     pub inner_class_info : String,
     pub outer_class_info : Option<String>,
@@ -27,6 +30,7 @@ pub struct InnerClasses_attribute {
     pub inner_class_access_flags : u16,
 }
 
+#[derive(Clone)]
 pub struct ExceptionTable_entry {
     pub start_pc : u16,
     pub end_pc : u16,
@@ -34,12 +38,13 @@ pub struct ExceptionTable_entry {
     pub catch_type : u16,
 }
 
+#[derive(Clone)]
 pub struct Code_attribute {
-    max_stack : u16,
-    max_locals : u16,
-    code : Vec<bytecode::Bytecode_Instruction>,
-    exception_table : Vec<ExceptionTable_entry>,
-    attributes : Vec<AttributeInfo>,
+    pub max_stack : u16,
+    pub max_locals : u16,
+    pub code : Vec<bytecode::Bytecode_Instruction>,
+    pub exception_table : Vec<ExceptionTable_entry>,
+    pub attributes : Vec<AttributeInfo>,
 }
 
 impl AttributeInfo {
@@ -70,6 +75,10 @@ impl AttributeInfo {
         if self.code.is_some() {
             let bytecode = self.code.as_ref().unwrap();
             println!("\t\tStack={}, Locals={}", bytecode.max_stack, bytecode.max_locals);
+
+            for instruction in &bytecode.code {
+                println!("\t\t\t{:?}", instruction);
+            }
         }
     }
 
@@ -204,10 +213,10 @@ impl AttributeInfo {
             );
         }
         else if name == "LineNumberTable" {
-            println!("LineNumberTable attribute");
+            //println!("LineNumberTable attribute");
         }
         else if name == "StackMapTable" {
-            println!("StackMapTable attribute");
+            //println!("StackMapTable attribute");
         }
         else {
             panic!("Unknown attribute name: {}", name);

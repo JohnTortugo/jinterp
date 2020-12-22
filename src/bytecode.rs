@@ -104,7 +104,7 @@ pub enum Bytecode_Instruction {
     Iand,
     Iastore,
     Iconstm1,
-    Iconst0,
+    Iconst0,        // push 0 to operand stack
     Iconst1,
     Iconst2,
     Iconst3,

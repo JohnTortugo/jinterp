@@ -8,6 +8,7 @@ mod spec;
 mod bytecode;
 mod attributes;
 mod constantpool;
+mod interpreter;
 
 fn main() {
     let filename = &env::args().collect::<Vec<String>>()[1];
@@ -15,5 +16,9 @@ fn main() {
     let mut buf_reader = BufReader::new(file);
     let java_class = spec::ClassFile::load(&mut buf_reader);
 
-    java_class.print(true, false, false, true, true);
+    let mut interpreter = interpreter::Interpreter::new(&java_class);
+
+    interpreter.run();
+
+    java_class.print(false, false, false, false, false);
 }

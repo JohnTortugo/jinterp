@@ -64,7 +64,7 @@ impl ClassFile {
                 11 => constantpool::ConstantPoolInfo::InterfaceMethodRef( constantpool::CONSTANT_InterfaceMethodref_info { class_index : BigEndian::read_u16(&load_part(2)), name_and_type_index : BigEndian::read_u16(&load_part(2))  } ),
                 7  => constantpool::ConstantPoolInfo::Class( constantpool::CONSTANT_Class_info { name_index : BigEndian::read_u16(&load_part(2))  } ),
                 12  => constantpool::ConstantPoolInfo::NameAndType( constantpool::CONSTANT_NameAndType_info { name_index : BigEndian::read_u16(&load_part(2)), descriptor_index : BigEndian::read_u16(&load_part(2)) } ),
-                1  => { let length = BigEndian::read_u16(&load_part(2)); constantpool::ConstantPoolInfo::Utf8( constantpool::CONSTANT_Utf8_info { length : length, bytes : load_part(length as usize) } ) } ,
+                1  => { let length = BigEndian::read_u16(&load_part(2)); constantpool::ConstantPoolInfo::Utf8( constantpool::CONSTANT_Utf8_info { bytes : load_part(length as usize) } ) } ,
                 3  => constantpool::ConstantPoolInfo::Integer( constantpool::CONSTANT_Integer_info { bytes : BigEndian::read_u32(&load_part(4))  } ),
                 4  => constantpool::ConstantPoolInfo::Float( constantpool::CONSTANT_Float_info { bytes : BigEndian::read_u32(&load_part(4))  } ),
                 17  => constantpool::ConstantPoolInfo::Dynamic( constantpool::CONSTANT_Dynamic_info { bootstrap_method_attr_index : BigEndian::read_u16(&load_part(2)), name_and_type_index : BigEndian::read_u16(&load_part(2)) } ),
@@ -132,10 +132,9 @@ impl ClassFile {
                 let attribute_name_index = BigEndian::read_u16(&load_part(2));
                 let attribute_length = BigEndian::read_u32(&load_part(4));
                 let info = load_part(attribute_length as usize);
+                let attr = attributes::AttributeInfo::build_attribute_info(&constant_pool, attribute_name_index, info);
 
-                attributes.push(
-                    attributes::AttributeInfo::build_attribute_info(&constant_pool, attribute_name_index, info)
-                );
+                attributes.push(attr);
             }
 
             methods.push(
@@ -250,7 +249,6 @@ impl ClassFile {
                     },
                     constantpool::ConstantPoolInfo::Utf8(value) => {
                         println!("\tUTF-8:");
-                        println!("\t\tlength: {}", value.length);
                         println!("\t\tbytes: {}", value);
                     },
                     constantpool::ConstantPoolInfo::Integer(value) => {

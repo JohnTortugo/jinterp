@@ -61,7 +61,6 @@ pub struct CONSTANT_NameAndType_info {
 
 // The CONSTANT_Utf8_info structure is used to represent constant string values
 pub struct CONSTANT_Utf8_info {
-    pub length : u16,
     pub bytes : Vec<u8>,
 }
 
