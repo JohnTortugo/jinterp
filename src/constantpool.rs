@@ -5,10 +5,10 @@ use std::io::Cursor;
 use crate::bytecode;
 use crate::spec;
 
-pub enum ConstantPoolInfo {
-    Class(CONSTANT_Class_info),
+pub enum ConstantPoolEntry {
+    Class(String),
     NameAndType(CONSTANT_NameAndType_info),
-    Utf8(CONSTANT_Utf8_info),
+    Utf8(String),
     Integer(CONSTANT_Integer_info),
     Float(CONSTANT_Float_info),
     MethodRef(CONSTANT_Methodref_info),
@@ -21,29 +21,18 @@ pub enum ConstantPoolInfo {
     Unknown(String)
 }
 
-impl ConstantPoolInfo {
-    pub fn class(&self) -> &CONSTANT_Class_info {
+impl ConstantPoolEntry {
+    pub fn class(&self) -> String {
         match self {
-            ConstantPoolInfo::Class(c) => c,
+            ConstantPoolEntry::Class(c) => c.to_string(),
             _ => panic!("This constant pool entry is not a Class."),
         }
     }
 
-    pub fn utf8(&self) -> &CONSTANT_Utf8_info {
+    pub fn utf8(&self) -> String {
         match self {
-            ConstantPoolInfo::Utf8(c) => c,
+            ConstantPoolEntry::Utf8(c) => c.to_string(),
             _ => panic!("This constant pool entry is not an UTF8."),
-        }
-    }
-}
-
-impl fmt::Display for ConstantPoolInfo {
-    fn fmt(&self, f:&mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ConstantPoolInfo::Class(value) => write!(f, "{}", value.name_index),
-            ConstantPoolInfo::Utf8(value) => write!(f, "{}", value),
-            ConstantPoolInfo::String(value) => write!(f, "{}", value.string_index),
-            _ => panic!("Unknown"),
         }
     }
 }
@@ -57,17 +46,6 @@ pub struct CONSTANT_Class_info {
 pub struct CONSTANT_NameAndType_info {
     pub name_index : u16,
     pub descriptor_index : u16,
-}
-
-// The CONSTANT_Utf8_info structure is used to represent constant string values
-pub struct CONSTANT_Utf8_info {
-    pub bytes : Vec<u8>,
-}
-
-impl fmt::Display for CONSTANT_Utf8_info {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &String::from_utf8_lossy(&self.bytes))
-    }
 }
 
 // The CONSTANT_Integer_info and CONSTANT_Float_info structures represent 4-byte numeric (int and float) constants:

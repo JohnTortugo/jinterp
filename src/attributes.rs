@@ -82,10 +82,10 @@ impl AttributeInfo {
         }
     }
 
-    pub fn build_attribute_info(constant_pool : &Vec<constantpool::ConstantPoolInfo>, attribute_name_index : u16, info : Vec<u8>) -> AttributeInfo {
+    pub fn build_attribute_info(constant_pool : &Vec<constantpool::ConstantPoolEntry>, attribute_name_index : u16, info : Vec<u8>) -> AttributeInfo {
         let mut cursor = Cursor::new(info);
         let constant_pool_attr_name_entry = constant_pool[attribute_name_index as usize].utf8();
-        let name = String::from_utf8_lossy(&constant_pool_attr_name_entry.bytes);
+        let name = constant_pool_attr_name_entry;
         let mut source_file = None;
         let mut inner_classes = None;
         let mut bootstrap_methods = None;
@@ -93,8 +93,8 @@ impl AttributeInfo {
 
         if name == "SourceFile" {
             let sourcefile_index = cursor.read_u16::<BigEndian>().unwrap();
-            let name2 = String::from_utf8_lossy(&constant_pool[sourcefile_index as usize].utf8().bytes) ;
-            source_file = Some(name2.into_owned());
+            let name2 = constant_pool[sourcefile_index as usize].utf8() ;
+            source_file = Some(name2);
         }
         else if name == "InnerClasses" {
             let number_of_classes = cursor.read_u16::<BigEndian>().unwrap();
@@ -102,14 +102,13 @@ impl AttributeInfo {
 
             for _ in 0..number_of_classes {
                 let inner_class_idx = cursor.read_u16::<BigEndian>().unwrap();
-                let inner_class_name_idx = constant_pool[inner_class_idx as usize].class().name_index;
-                let inner_class_info = String::from_utf8_lossy(&constant_pool[inner_class_name_idx as usize].utf8().bytes) ;
+                let inner_class_info = constant_pool[inner_class_idx as usize].class();
 
                 let outer_class_idx = cursor.read_u16::<BigEndian>().unwrap();
                 let outer_class_info =  if outer_class_idx != 0 
                                             { 
-                                                let outer_class_info_class_idx = constant_pool[outer_class_idx as usize].class().name_index;
-                                                Some( String::from_utf8_lossy(&constant_pool[outer_class_info_class_idx as usize].utf8().bytes).into_owned() )
+                                                let outer_class_info_class_idx = constant_pool[outer_class_idx as usize].class();
+                                                Some( outer_class_info_class_idx )
                                             }
                                         else
                                             { None };
@@ -117,7 +116,7 @@ impl AttributeInfo {
                 let inner_name_idx = cursor.read_u16::<BigEndian>().unwrap();
                 let inner_name =    if inner_name_idx != 0 
                                         { 
-                                            Some( String::from_utf8_lossy(&constant_pool[inner_name_idx as usize].utf8().bytes).into_owned() )
+                                            Some( constant_pool[inner_name_idx as usize].utf8() )
                                         }
                                     else
                                         { None };
