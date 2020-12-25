@@ -61,7 +61,7 @@ impl AttributeInfo {
                 println!("\t\t{} {}", "Inner Class:", inner_class.inner_class_info);
                 println!("\t\t{} {}", "Outer Class:", if inner_class.outer_class_info.is_some() { inner_class.outer_class_info.as_deref().unwrap() } else { "" } );
                 println!("\t\t{} {}", "Inner Name:", if inner_class.inner_name.is_some() { inner_class.inner_name.as_deref().unwrap() } else { "" } );
-                println!("\t\t{} {}", "Flags:", spec::ClassFile::flags_names(inner_class.inner_class_access_flags));
+                println!("\t\t{} {}", "Flags:", spec::ClassDesc::flags_names(inner_class.inner_class_access_flags));
             }
         }
 
@@ -93,8 +93,7 @@ impl AttributeInfo {
 
         if name == "SourceFile" {
             let sourcefile_index = cursor.read_u16::<BigEndian>().unwrap();
-            let name2 = constant_pool[sourcefile_index as usize].utf8() ;
-            source_file = Some(name2);
+            source_file = Some( constant_pool[sourcefile_index as usize].utf8() );
         }
         else if name == "InnerClasses" {
             let number_of_classes = cursor.read_u16::<BigEndian>().unwrap();
@@ -205,7 +204,7 @@ impl AttributeInfo {
                 Code_attribute {
                     max_stack,
                     max_locals,
-                    code : spec::ClassFile::parse_bytecode(bytes),
+                    code : spec::ClassDesc::parse_bytecode(bytes),
                     exception_table,
                     attributes
                 }

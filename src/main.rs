@@ -14,7 +14,7 @@ fn main() {
     let filename = &env::args().collect::<Vec<String>>()[1];
     let file = File::open(filename).expect("File not found.");
     let mut buf_reader = BufReader::new(file);
-    let startup_class = spec::ClassFile::load(&mut buf_reader);
+    let startup_class = spec::ClassDesc::new(&mut buf_reader);
     let mut interpreter = interpreter::Interpreter::new(&startup_class, filename);
 
     interpreter.run();

@@ -6,29 +6,29 @@ use crate::bytecode;
 use crate::attributes;
 use crate::constantpool;
 
-pub struct ClassFile <'a> {
+pub struct ClassDesc <'a> {
     pub magic : u32,
+    pub name : String,
     pub minor_version : u16,
     pub major_version : u16,
-    pub constant_pool : Vec<constantpool::ConstantPoolEntry>,
     pub access_flags : u16,
-    pub name : String,
-    pub parent_class_name : String,
-    pub parent_class : Option<&'a ClassFile<'a>>,
+    pub fields : Vec<Field>,
+    pub methods : Vec<Method>,
     pub interfaces : Vec<u16>,
-    pub fields : Vec<FieldInfo>,
-    pub methods : Vec<MethodInfo>,
-    pub attributes : Vec<attributes::AttributeInfo>
+    pub parent_class_name : String,
+    pub parent_class : Option<&'a ClassDesc<'a>>,
+    pub attributes : Vec<attributes::AttributeInfo>,
+    pub constant_pool : Vec<constantpool::ConstantPoolEntry>,
 }
 
-pub struct MethodInfo {
+pub struct Method {
     pub access_flags : u16,
     pub name : String,
     pub descriptor_index : u16,
     pub attributes : Vec<attributes::AttributeInfo>,
 }
 
-pub struct FieldInfo {
+pub struct Field {
     pub access_flags : u16,
     pub name : String,
     pub descriptor_index : u16,
@@ -36,138 +36,23 @@ pub struct FieldInfo {
     pub attributes : Vec<attributes::AttributeInfo>
 }
 
-impl<'a> ClassFile<'a> {
-    pub fn load<T: Read>(reader: &mut T) -> ClassFile {
-        let mut load_part = |size| {
-            let mut buf = Vec::with_capacity(size);
-            let mut part_reader = reader.take(size as u64);
-
-            part_reader.read_to_end(&mut buf).unwrap();
-
-            buf
-        };
-
-        let magic = BigEndian::read_u32(&load_part(4));
-        let miv = BigEndian::read_u16(&load_part(2));
-        let mav = BigEndian::read_u16(&load_part(2));
-        let cp_size = BigEndian::read_u16(&load_part(2));
-        let mut constant_pool = Vec::with_capacity((cp_size + 1) as usize);
-
-        constant_pool.push(
-            constantpool::ConstantPoolEntry::Unknown("Padding".to_string())
-        );
-
-        for _ in 1..cp_size {
-            let tag = load_part(1)[0] as u8;
-
-            let constant_pool_entry = match tag {
-                9=> constantpool::ConstantPoolEntry::FieldRef( constantpool::CONSTANT_Fieldref_info { class_index : BigEndian::read_u16(&load_part(2)), name_and_type_index : BigEndian::read_u16(&load_part(2))  } ),
-                10 => constantpool::ConstantPoolEntry::MethodRef( constantpool::CONSTANT_Methodref_info { class_index : BigEndian::read_u16(&load_part(2)), name_and_type_index : BigEndian::read_u16(&load_part(2))  } ),
-                11 => constantpool::ConstantPoolEntry::InterfaceMethodRef( constantpool::CONSTANT_InterfaceMethodref_info { class_index : BigEndian::read_u16(&load_part(2)), name_and_type_index : BigEndian::read_u16(&load_part(2))  } ),
-                7  => constantpool::ConstantPoolEntry::Class( constant_pool[BigEndian::read_u16(&load_part(2)) as usize].utf8() ),
-                12  => constantpool::ConstantPoolEntry::NameAndType( constantpool::CONSTANT_NameAndType_info { name_index : BigEndian::read_u16(&load_part(2)), descriptor_index : BigEndian::read_u16(&load_part(2)) } ),
-                1  => { let length = BigEndian::read_u16(&load_part(2)); constantpool::ConstantPoolEntry::Utf8( String::from_utf8_lossy( &load_part(length as usize) ).to_string() ) } ,
-                3  => constantpool::ConstantPoolEntry::Integer( constantpool::CONSTANT_Integer_info { bytes : BigEndian::read_u32(&load_part(4))  } ),
-                4  => constantpool::ConstantPoolEntry::Float( constantpool::CONSTANT_Float_info { bytes : BigEndian::read_u32(&load_part(4))  } ),
-                17  => constantpool::ConstantPoolEntry::Dynamic( constantpool::CONSTANT_Dynamic_info { bootstrap_method_attr_index : BigEndian::read_u16(&load_part(2)), name_and_type_index : BigEndian::read_u16(&load_part(2)) } ),
-                18  => constantpool::ConstantPoolEntry::InvokeDynamic( constantpool::CONSTANT_InvokeDynamic_info { bootstrap_method_attr_index : BigEndian::read_u16(&load_part(2)), name_and_type_index : BigEndian::read_u16(&load_part(2)) } ),
-                8  => constantpool::ConstantPoolEntry::String( constantpool::CONSTANT_String_info { string_index : BigEndian::read_u16(&load_part(2))  } ),
-                15  => constantpool::ConstantPoolEntry::MethodHandle( constantpool::CONSTANT_MethodHandle_info { reference_kind : load_part(1)[0] as u8, reference_index : BigEndian::read_u16(&load_part(2)) } ),
-                _  => constantpool::ConstantPoolEntry::Unknown( "Unknown".to_string() ),
-            };
-
-            constant_pool.push( constant_pool_entry );
-        }
-
-        let access_flags = BigEndian::read_u16(&load_part(2));
-        let this_class = BigEndian::read_u16(&load_part(2));
+impl<'a> ClassDesc<'a> {
+    pub fn new<T: Read>(reader: &mut T) -> ClassDesc {
+        let magic = ClassDesc::fetch_u32(reader);
+        let miv = ClassDesc::fetch_u16(reader);
+        let mav = ClassDesc::fetch_u16(reader);
+        let constant_pool = ClassDesc::fetch_constant_pool(reader);
+        let access_flags = ClassDesc::fetch_u16(reader);
+        let this_class = ClassDesc::fetch_u16(reader);
         let class_name = constant_pool[this_class as usize].class();
-        let parent_class = BigEndian::read_u16(&load_part(2));
+        let parent_class = ClassDesc::fetch_u16(reader);
         let parent_class_name = constant_pool[parent_class as usize].class();
-        let interfaces_count = BigEndian::read_u16(&load_part(2));
-        let mut interfaces = Vec::with_capacity(interfaces_count as usize);
+        let interfaces = ClassDesc::fetch_interfaces(reader);
+        let fields = ClassDesc::fetch_fields(reader, &constant_pool);
+        let methods = ClassDesc::fetch_methods(reader, &constant_pool);
+        let attributes = ClassDesc::fetch_attributes(reader, &constant_pool);
 
-        for _ in 0..interfaces_count {
-            let interface_info = BigEndian::read_u16(&load_part(2));
-            interfaces.push(interface_info);
-        }
-
-        let fields_count = BigEndian::read_u16(&load_part(2));
-        let mut fields = Vec::with_capacity(fields_count as usize);
-
-        for _ in 0..fields_count {
-            let access_flags = BigEndian::read_u16(&load_part(2));
-            let name_index = BigEndian::read_u16(&load_part(2));
-            let name = constant_pool[name_index as usize].utf8();
-            let descriptor_index = BigEndian::read_u16(&load_part(2));
-            let attributes_count = BigEndian::read_u16(&load_part(2));
-            let mut attributes = Vec::with_capacity(attributes_count as usize);
-
-            for _ in 0..attributes_count {
-                let attribute_name_index = BigEndian::read_u16(&load_part(2));
-                let attribute_length = BigEndian::read_u32(&load_part(4));
-                let info = load_part(attribute_length as usize);
-
-                attributes.push(
-                    attributes::AttributeInfo::build_attribute_info(&constant_pool, attribute_name_index, info)
-                );
-            }
-
-            fields.push(
-                FieldInfo {
-                    access_flags,
-                    name,
-                    descriptor_index,
-                    attributes,
-                    value: None,
-                }
-            );
-        }
-
-        let methods_count = BigEndian::read_u16(&load_part(2));
-        let mut methods = Vec::with_capacity(methods_count as usize);
-
-        for _ in 0..methods_count {
-            let access_flags = BigEndian::read_u16(&load_part(2));
-            let name_index = BigEndian::read_u16(&load_part(2));
-            let name = constant_pool[name_index as usize].utf8();
-            let descriptor_index = BigEndian::read_u16(&load_part(2));
-            let attributes_count = BigEndian::read_u16(&load_part(2));
-            let mut attributes = Vec::with_capacity(attributes_count as usize);
-
-            for _ in 0..attributes_count {
-                let attribute_name_index = BigEndian::read_u16(&load_part(2));
-                let attribute_length = BigEndian::read_u32(&load_part(4));
-                let info = load_part(attribute_length as usize);
-                let attr = attributes::AttributeInfo::build_attribute_info(&constant_pool, attribute_name_index, info);
-
-                attributes.push(attr);
-            }
-
-            methods.push(
-                MethodInfo {
-                    access_flags,
-                    name,
-                    descriptor_index,
-                    attributes,
-                }
-            );
-        }
-
-        let attributes_count = BigEndian::read_u16(&load_part(2));
-        let mut attributes = Vec::with_capacity(attributes_count as usize);
-
-        for _ in 0..attributes_count {
-            let attribute_name_index = BigEndian::read_u16(&load_part(2));
-            let attribute_length = BigEndian::read_u32(&load_part(4));
-            let info = load_part(attribute_length as usize);
-
-            attributes.push(
-                attributes::AttributeInfo::build_attribute_info(&constant_pool, attribute_name_index, info)
-            );
-        }
-
-        ClassFile {
+        ClassDesc {
             magic,
             minor_version: miv,
             major_version: mav,
@@ -181,6 +66,133 @@ impl<'a> ClassFile<'a> {
             methods,
             attributes,
         }
+    }
+
+    fn fetch_constant_pool<T: Read>(reader: &mut T) -> Vec<constantpool::ConstantPoolEntry> {
+        let cp_size = ClassDesc::fetch_u16(reader);
+        let mut constant_pool = Vec::with_capacity((cp_size + 1) as usize);
+
+        constant_pool.push(
+            constantpool::ConstantPoolEntry::Unknown("Padding".to_string())
+        );
+
+        for _ in 1..cp_size {
+            let tag = ClassDesc::fetch_bytes(reader, 1)[0] as u8;
+
+            let constant_pool_entry = match tag {
+                1  => { let length = ClassDesc::fetch_u16(reader); constantpool::ConstantPoolEntry::Utf8( String::from_utf8_lossy( &ClassDesc::fetch_bytes(reader, length as usize) ).to_string() ) } ,
+                3  => constantpool::ConstantPoolEntry::Integer( constantpool::CONSTANT_Integer { bytes : ClassDesc::fetch_u32(reader)  } ),
+                4  => constantpool::ConstantPoolEntry::Float( constantpool::CONSTANT_Float { bytes : ClassDesc::fetch_u32(reader) } ),
+                7  => constantpool::ConstantPoolEntry::Class( ClassDesc::fetch_u16(reader).to_string() ),
+                8  => constantpool::ConstantPoolEntry::String( ClassDesc::fetch_u16(reader).to_string() ),
+                9  => constantpool::ConstantPoolEntry::FieldRef( constantpool::CONSTANT_Fieldref { class_index : ClassDesc::fetch_u16(reader), name_and_type_index : ClassDesc::fetch_u16(reader) } ),
+                10 => constantpool::ConstantPoolEntry::MethodRef( constantpool::CONSTANT_Methodref { class_index : ClassDesc::fetch_u16(reader), name_and_type_index : ClassDesc::fetch_u16(reader) } ),
+                11 => constantpool::ConstantPoolEntry::InterfaceMethodRef( constantpool::CONSTANT_InterfaceMethodref { class_index : ClassDesc::fetch_u16(reader), name_and_type_index : ClassDesc::fetch_u16(reader)  } ),
+                12 => constantpool::ConstantPoolEntry::NameAndType( constantpool::CONSTANT_NameAndType { name_index : ClassDesc::fetch_u16(reader), descriptor_index : ClassDesc::fetch_u16(reader) } ),
+                15 => constantpool::ConstantPoolEntry::MethodHandle( constantpool::CONSTANT_MethodHandle { reference_kind : ClassDesc::fetch_bytes(reader, 1)[0] as u8, reference_index : ClassDesc::fetch_u16(reader) } ),
+                17 => constantpool::ConstantPoolEntry::Dynamic( constantpool::CONSTANT_Dynamic { bootstrap_method_attr_index : ClassDesc::fetch_u16(reader), name_and_type_index : ClassDesc::fetch_u16(reader) } ),
+                18 => constantpool::ConstantPoolEntry::InvokeDynamic( constantpool::CONSTANT_InvokeDynamic { bootstrap_method_attr_index : ClassDesc::fetch_u16(reader), name_and_type_index : ClassDesc::fetch_u16(reader) } ),
+                _  => constantpool::ConstantPoolEntry::Unknown( "Unknown".to_string() ),
+            };
+
+            constant_pool.push( constant_pool_entry );
+        }
+
+        constant_pool
+    }
+
+    fn fetch_interfaces<T: Read>(reader: &mut T) -> Vec<u16> {
+        let interfaces_count = ClassDesc::fetch_u16(reader);
+        let mut interfaces = Vec::with_capacity(interfaces_count as usize);
+
+        for _ in 0..interfaces_count {
+            let interface = ClassDesc::fetch_u16(reader);
+            interfaces.push(interface);
+        }
+
+        interfaces
+    }
+
+    fn fetch_fields<T: Read>(reader: &mut T, constant_pool : &Vec<constantpool::ConstantPoolEntry>) -> Vec<Field> {
+        let fields_count = ClassDesc::fetch_u16(reader);
+        let mut fields = Vec::with_capacity(fields_count as usize);
+
+        for _ in 0..fields_count {
+            let access_flags = ClassDesc::fetch_u16(reader);
+            let name_index = ClassDesc::fetch_u16(reader);
+            let name = constant_pool[name_index as usize].utf8();
+            let descriptor_index = ClassDesc::fetch_u16(reader);
+            let attributes = ClassDesc::fetch_attributes(reader, constant_pool);
+
+            fields.push(
+                Field {
+                    access_flags,
+                    name,
+                    descriptor_index,
+                    attributes,
+                    value: None,
+                }
+            );
+        }
+
+        fields
+    }
+
+    fn fetch_methods<T: Read>(reader: &mut T, constant_pool : &Vec<constantpool::ConstantPoolEntry>) -> Vec<Method> {
+        let methods_count = ClassDesc::fetch_u16(reader);
+        let mut methods = Vec::with_capacity(methods_count as usize);
+
+        for _ in 0..methods_count {
+            let access_flags = ClassDesc::fetch_u16(reader);
+            let name_index = ClassDesc::fetch_u16(reader);
+            let name = constant_pool[name_index as usize].utf8();
+            let descriptor_index = ClassDesc::fetch_u16(reader);
+            let attributes = ClassDesc::fetch_attributes(reader, &constant_pool);
+
+            methods.push(
+                Method {
+                    access_flags,
+                    name,
+                    descriptor_index,
+                    attributes,
+                }
+            );
+        }
+
+        methods
+    }
+
+    fn fetch_attributes<T: Read>(reader: &mut T, constant_pool : &Vec<constantpool::ConstantPoolEntry>) -> Vec<attributes::AttributeInfo> {
+        let attributes_count = ClassDesc::fetch_u16(reader);
+        let mut attributes = Vec::with_capacity(attributes_count as usize);
+
+        for _ in 0..attributes_count {
+            let attribute_name_index = ClassDesc::fetch_u16(reader);
+            let attribute_length = ClassDesc::fetch_u32(reader);
+            let info = ClassDesc::fetch_bytes(reader, attribute_length as usize);
+
+            attributes.push(
+                attributes::AttributeInfo::build_attribute_info(constant_pool, attribute_name_index, info)
+            );
+        }
+
+        attributes
+    }
+
+    fn fetch_bytes<T: Read>(reader: &mut T, size : usize) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(size);
+        let mut part_reader = reader.take(size as u64);
+        part_reader.read_to_end(&mut buf).unwrap();
+
+        buf
+    }
+
+    fn fetch_u16<T: Read>(reader: &mut T) -> u16 {
+        BigEndian::read_u16(&ClassDesc::fetch_bytes(reader, 2))
+    }
+
+    fn fetch_u32<T: Read>(reader: &mut T) -> u32 {
+        BigEndian::read_u32(&ClassDesc::fetch_bytes(reader, 4))
     }
 
     pub fn flags_names(flags : u16) -> String {
@@ -215,7 +227,7 @@ impl<'a> ClassFile<'a> {
     pub fn print(self : Self, attributes : bool, constant_pool : bool, interfaces : bool, fields : bool, methods : bool) {
         println!("{:<30} 0x{:X?}", "Magic number:", self.magic);
         println!("{:<30} {}.{}", "Version:", self.major_version, self.minor_version);
-        println!("{:<30} {}", "Access Flags:", ClassFile::flags_names(self.access_flags));
+        println!("{:<30} {}", "Access Flags:", ClassDesc::flags_names(self.access_flags));
         println!("{:<30} {}", "This Class:", self.name);
         println!("{:<30} {}", "Super Class:", self.parent_class_name);
 
@@ -291,7 +303,7 @@ impl<'a> ClassFile<'a> {
                     },
                     constantpool::ConstantPoolEntry::String(value) => {
                         println!("\tString:");
-                        println!("\t\tstring_index: {} \t # {}", value.string_index, value.string_index);
+                        println!("\t\tstring_index: {}", value);
                     },
                     constantpool::ConstantPoolEntry::MethodHandle(value) => {
                         println!("\tMethodHandle:");
@@ -308,7 +320,7 @@ impl<'a> ClassFile<'a> {
 
             for field_entry in &self.fields {
                 println!("\t Access flags: {}, Name: {}, descritor_index: {}", 
-                    ClassFile::flags_names(field_entry.access_flags),
+                    ClassDesc::flags_names(field_entry.access_flags),
                     field_entry.name,
                     field_entry.descriptor_index,
                 );
@@ -328,7 +340,7 @@ impl<'a> ClassFile<'a> {
 
             for method in &self.methods {
                 println!("\tMethod name: {} {}", method.name, method.descriptor_index);
-                println!("\tAccess flags: {}", ClassFile::flags_names(method.access_flags));
+                println!("\tAccess flags: {}", ClassDesc::flags_names(method.access_flags));
 
                 if method.attributes.len() > 0 {
                     println!("\tAttributes: ");

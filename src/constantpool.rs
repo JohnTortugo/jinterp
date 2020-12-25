@@ -7,18 +7,18 @@ use crate::spec;
 
 pub enum ConstantPoolEntry {
     Class(String),
-    NameAndType(CONSTANT_NameAndType_info),
     Utf8(String),
-    Integer(CONSTANT_Integer_info),
-    Float(CONSTANT_Float_info),
-    MethodRef(CONSTANT_Methodref_info),
-    FieldRef(CONSTANT_Fieldref_info),
-    InterfaceMethodRef(CONSTANT_InterfaceMethodref_info),
-    Dynamic(CONSTANT_Dynamic_info),
-    InvokeDynamic(CONSTANT_InvokeDynamic_info),
-    String(CONSTANT_String_info),
-    MethodHandle(CONSTANT_MethodHandle_info),
-    Unknown(String)
+    String(String),
+    Unknown(String),
+    NameAndType(CONSTANT_NameAndType),
+    Integer(CONSTANT_Integer),
+    Float(CONSTANT_Float),
+    MethodRef(CONSTANT_Methodref),
+    FieldRef(CONSTANT_Fieldref),
+    InterfaceMethodRef(CONSTANT_InterfaceMethodref),
+    Dynamic(CONSTANT_Dynamic),
+    InvokeDynamic(CONSTANT_InvokeDynamic),
+    MethodHandle(CONSTANT_MethodHandle),
 }
 
 impl ConstantPoolEntry {
@@ -37,57 +37,45 @@ impl ConstantPoolEntry {
     }
 }
 
-// The CONSTANT_Class_info structure is used to represent a class or an interface:
-pub struct CONSTANT_Class_info {
-    pub name_index : u16,
-}
-
-// The CONSTANT_NameAndType_info structure is used to represent a field or method, without indicating which class or interface type it belongs to
-pub struct CONSTANT_NameAndType_info {
+pub struct CONSTANT_NameAndType {
     pub name_index : u16,
     pub descriptor_index : u16,
 }
 
-// The CONSTANT_Integer_info and CONSTANT_Float_info structures represent 4-byte numeric (int and float) constants:
-pub struct CONSTANT_Integer_info {
+pub struct CONSTANT_Integer {
     pub bytes : u32,
 }
 
-pub struct CONSTANT_Float_info {
+pub struct CONSTANT_Float {
     pub bytes : u32,
 }
 
-// Fields, methods, and interface methods are represented by similar structures:
-pub struct CONSTANT_Fieldref_info {
+pub struct CONSTANT_Fieldref {
     pub class_index : u16,
     pub name_and_type_index : u16,
 }
 
-pub struct CONSTANT_Methodref_info {
+pub struct CONSTANT_Methodref {
     pub class_index : u16,
     pub name_and_type_index : u16,
 }
 
-pub struct CONSTANT_InterfaceMethodref_info {
+pub struct CONSTANT_InterfaceMethodref {
     pub class_index : u16,
     pub name_and_type_index : u16,
 }
 
-pub struct CONSTANT_Dynamic_info {
+pub struct CONSTANT_Dynamic {
     pub bootstrap_method_attr_index : u16,
     pub name_and_type_index : u16,
 }
 
-pub struct CONSTANT_InvokeDynamic_info {
+pub struct CONSTANT_InvokeDynamic {
     pub bootstrap_method_attr_index : u16,
     pub name_and_type_index : u16,
 }
 
-pub struct CONSTANT_String_info {
-    pub string_index : u16,
-}
-
-pub struct CONSTANT_MethodHandle_info {
+pub struct CONSTANT_MethodHandle {
     pub reference_kind : u8,
     pub reference_index : u16,
 }

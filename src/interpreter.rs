@@ -5,7 +5,7 @@ use crate::bytecode;
 use std::collections::HashMap;
 
 pub struct Frame <'a> {
-    pub class : &'a spec::ClassFile<'a>,
+    pub class : &'a spec::ClassDesc<'a>,
     pub locals : Vec<u64>,
     pub stack : Vec<u64>,
     pub method_idx : u64,
@@ -14,12 +14,12 @@ pub struct Frame <'a> {
 }
 
 pub struct Interpreter <'a> {
-    loaded_classes : HashMap<String, spec::ClassFile<'a>>,
+    loaded_classes : HashMap<String, spec::ClassDesc<'a>>,
     frames : Vec<Frame<'a>>,
 }
 
 impl<'a> Interpreter <'a> {
-    fn build_frame_for(startup_class : &'a spec::ClassFile, name : &str) -> Option<Frame<'a>> {
+    fn build_frame_for(startup_class : &'a spec::ClassDesc, name : &str) -> Option<Frame<'a>> {
         for (pos, method) in startup_class.methods.iter().enumerate() {
             if name == method.name {
                 let mut locals_size = 0;
@@ -48,7 +48,7 @@ impl<'a> Interpreter <'a> {
         return None
     }
 
-    pub fn new(startup_class : &'a spec::ClassFile, filename : &String) -> Self {
+    pub fn new(startup_class : &'a spec::ClassDesc, filename : &String) -> Self {
         let mut frames = Vec::<Frame>::new();
         let cinit_frame = Interpreter::build_frame_for(&startup_class, "<clinit>");
         let main_frame = Interpreter::build_frame_for(&startup_class, "main");
