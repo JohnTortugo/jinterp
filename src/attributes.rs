@@ -2,12 +2,13 @@ use std::fmt;
 use std::io::Read;
 use byteorder::{ByteOrder, BigEndian, ReadBytesExt};
 use std::io::Cursor;
+use crate::utils;
 use crate::bytecode;
 use crate::spec;
 use crate::attributes;
 use crate::constantpool;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct AttributeInfo {
     pub name : String,
     pub source_file : Option<String>,
@@ -16,13 +17,13 @@ pub struct AttributeInfo {
     pub code : Option<Code_attribute>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BootstrapMethods_attribute {
     pub bootstrap_method_ref : u16,
     pub bootstrap_arguments : Vec<u16>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct InnerClasses_attribute {
     pub inner_class_info : String,
     pub outer_class_info : Option<String>,
@@ -30,7 +31,7 @@ pub struct InnerClasses_attribute {
     pub inner_class_access_flags : u16,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ExceptionTable_entry {
     pub start_pc : u16,
     pub end_pc : u16,
@@ -38,7 +39,7 @@ pub struct ExceptionTable_entry {
     pub catch_type : u16,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Code_attribute {
     pub max_stack : u16,
     pub max_locals : u16,
@@ -227,5 +228,22 @@ impl AttributeInfo {
             inner_classes,
             code,
         }
+    }
+
+    pub fn fetch_attributes<T: Read>(reader: &mut T, constant_pool : &Vec<constantpool::ConstantPoolEntry>) -> Vec<attributes::AttributeInfo> {
+        let attributes_count = utils::fetch_u16(reader);
+        let mut attributes = Vec::with_capacity(attributes_count as usize);
+
+        for _ in 0..attributes_count {
+            let attribute_name_index = utils::fetch_u16(reader);
+            let attribute_length = utils::fetch_u32(reader);
+            let info = utils::fetch_bytes(reader, attribute_length as usize);
+
+            attributes.push(
+                attributes::AttributeInfo::build_attribute_info(constant_pool, attribute_name_index, info)
+            );
+        }
+
+        attributes
     }
 }

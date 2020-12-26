@@ -2,10 +2,12 @@ use std::fmt;
 use std::io::Read;
 use byteorder::{ByteOrder, BigEndian, ReadBytesExt};
 use std::io::Cursor;
+use crate::utils;
 use crate::bytecode;
 use crate::attributes;
 use crate::constantpool;
 
+#[derive(Debug)]
 pub struct ClassDesc <'a> {
     pub magic : u32,
     pub name : String,
@@ -21,6 +23,7 @@ pub struct ClassDesc <'a> {
     pub constant_pool : Vec<constantpool::ConstantPoolEntry>,
 }
 
+#[derive(Debug)]
 pub struct Method {
     pub access_flags : u16,
     pub name : String,
@@ -28,29 +31,30 @@ pub struct Method {
     pub attributes : Vec<attributes::AttributeInfo>,
 }
 
+#[derive(Debug)]
 pub struct Field {
     pub access_flags : u16,
     pub name : String,
-    pub descriptor_index : u16,
+    pub descriptor : String,
     pub value : Option<u64>,
     pub attributes : Vec<attributes::AttributeInfo>
 }
 
 impl<'a> ClassDesc<'a> {
     pub fn new<T: Read>(reader: &mut T) -> ClassDesc {
-        let magic = ClassDesc::fetch_u32(reader);
-        let miv = ClassDesc::fetch_u16(reader);
-        let mav = ClassDesc::fetch_u16(reader);
+        let magic = utils::fetch_u32(reader);
+        let miv = utils::fetch_u16(reader);
+        let mav = utils::fetch_u16(reader);
         let constant_pool = ClassDesc::fetch_constant_pool(reader);
-        let access_flags = ClassDesc::fetch_u16(reader);
-        let this_class = ClassDesc::fetch_u16(reader);
+        let access_flags = utils::fetch_u16(reader);
+        let this_class = utils::fetch_u16(reader);
         let class_name = constant_pool[this_class as usize].class();
-        let parent_class = ClassDesc::fetch_u16(reader);
+        let parent_class = utils::fetch_u16(reader);
         let parent_class_name = constant_pool[parent_class as usize].class();
         let interfaces = ClassDesc::fetch_interfaces(reader);
         let fields = ClassDesc::fetch_fields(reader, &constant_pool);
         let methods = ClassDesc::fetch_methods(reader, &constant_pool);
-        let attributes = ClassDesc::fetch_attributes(reader, &constant_pool);
+        let attributes = attributes::AttributeInfo::fetch_attributes(reader, &constant_pool);
 
         ClassDesc {
             magic,
@@ -69,7 +73,7 @@ impl<'a> ClassDesc<'a> {
     }
 
     fn fetch_constant_pool<T: Read>(reader: &mut T) -> Vec<constantpool::ConstantPoolEntry> {
-        let cp_size = ClassDesc::fetch_u16(reader);
+        let cp_size = utils::fetch_u16(reader);
         let mut constant_pool = Vec::with_capacity((cp_size + 1) as usize);
 
         constant_pool.push(
@@ -77,36 +81,90 @@ impl<'a> ClassDesc<'a> {
         );
 
         for _ in 1..cp_size {
-            let tag = ClassDesc::fetch_bytes(reader, 1)[0] as u8;
+            let tag = utils::fetch_bytes(reader, 1)[0] as u8;
 
             let constant_pool_entry = match tag {
-                1  => { let length = ClassDesc::fetch_u16(reader); constantpool::ConstantPoolEntry::Utf8( String::from_utf8_lossy( &ClassDesc::fetch_bytes(reader, length as usize) ).to_string() ) } ,
-                3  => constantpool::ConstantPoolEntry::Integer( constantpool::CONSTANT_Integer { bytes : ClassDesc::fetch_u32(reader)  } ),
-                4  => constantpool::ConstantPoolEntry::Float( constantpool::CONSTANT_Float { bytes : ClassDesc::fetch_u32(reader) } ),
-                7  => constantpool::ConstantPoolEntry::Class( ClassDesc::fetch_u16(reader).to_string() ),
-                8  => constantpool::ConstantPoolEntry::String( ClassDesc::fetch_u16(reader).to_string() ),
-                9  => constantpool::ConstantPoolEntry::FieldRef( constantpool::CONSTANT_Fieldref { class_index : ClassDesc::fetch_u16(reader), name_and_type_index : ClassDesc::fetch_u16(reader) } ),
-                10 => constantpool::ConstantPoolEntry::MethodRef( constantpool::CONSTANT_Methodref { class_index : ClassDesc::fetch_u16(reader), name_and_type_index : ClassDesc::fetch_u16(reader) } ),
-                11 => constantpool::ConstantPoolEntry::InterfaceMethodRef( constantpool::CONSTANT_InterfaceMethodref { class_index : ClassDesc::fetch_u16(reader), name_and_type_index : ClassDesc::fetch_u16(reader)  } ),
-                12 => constantpool::ConstantPoolEntry::NameAndType( constantpool::CONSTANT_NameAndType { name_index : ClassDesc::fetch_u16(reader), descriptor_index : ClassDesc::fetch_u16(reader) } ),
-                15 => constantpool::ConstantPoolEntry::MethodHandle( constantpool::CONSTANT_MethodHandle { reference_kind : ClassDesc::fetch_bytes(reader, 1)[0] as u8, reference_index : ClassDesc::fetch_u16(reader) } ),
-                17 => constantpool::ConstantPoolEntry::Dynamic( constantpool::CONSTANT_Dynamic { bootstrap_method_attr_index : ClassDesc::fetch_u16(reader), name_and_type_index : ClassDesc::fetch_u16(reader) } ),
-                18 => constantpool::ConstantPoolEntry::InvokeDynamic( constantpool::CONSTANT_InvokeDynamic { bootstrap_method_attr_index : ClassDesc::fetch_u16(reader), name_and_type_index : ClassDesc::fetch_u16(reader) } ),
+                1  => { let length = utils::fetch_u16(reader); constantpool::ConstantPoolEntry::Utf8( String::from_utf8_lossy( &utils::fetch_bytes(reader, length as usize) ).to_string() ) } ,
+                3  => constantpool::ConstantPoolEntry::Integer( constantpool::CONSTANT_Integer { bytes : utils::fetch_u32(reader)  } ),
+                4  => constantpool::ConstantPoolEntry::Float( constantpool::CONSTANT_Float { bytes : utils::fetch_u32(reader) } ),
+                7  => constantpool::ConstantPoolEntry::Class( utils::fetch_u16(reader).to_string() ),
+                8  => constantpool::ConstantPoolEntry::String( utils::fetch_u16(reader).to_string() ),
+                9  => constantpool::ConstantPoolEntry::FieldRef( constantpool::CONSTANT_Fieldref { class : utils::fetch_u16(reader).to_string(), name_and_type_index : utils::fetch_u16(reader), field : String::new(), descriptor : String::new() } ),
+                10 => constantpool::ConstantPoolEntry::MethodRef( constantpool::CONSTANT_Methodref { class : utils::fetch_u16(reader).to_string(), name_and_type_index : utils::fetch_u16(reader), method : String::new(), descriptor : String::new() } ),
+                11 => constantpool::ConstantPoolEntry::InterfaceMethodRef( constantpool::CONSTANT_InterfaceMethodref { class : utils::fetch_u16(reader).to_string(), name_and_type_index : utils::fetch_u16(reader), field_or_method : String::new(), descriptor : String::new()  } ),
+                12 => constantpool::ConstantPoolEntry::NameAndType( constantpool::CONSTANT_NameAndType { name : utils::fetch_u16(reader).to_string(), descriptor : utils::fetch_u16(reader).to_string() } ),
+                15 => constantpool::ConstantPoolEntry::MethodHandle( constantpool::CONSTANT_MethodHandle { reference_kind : utils::fetch_bytes(reader, 1)[0] as u8, reference_index : utils::fetch_u16(reader) } ),
+                17 => constantpool::ConstantPoolEntry::Dynamic( constantpool::CONSTANT_Dynamic { bootstrap_method_attr_index : utils::fetch_u16(reader), name_and_type_index : utils::fetch_u16(reader), field : String::new(), descriptor : String::new() } ),
+                18 => constantpool::ConstantPoolEntry::InvokeDynamic( constantpool::CONSTANT_InvokeDynamic { bootstrap_method_attr_index : utils::fetch_u16(reader), name_and_type_index : utils::fetch_u16(reader), method : String::new(), descriptor : String::new() } ),
                 _  => constantpool::ConstantPoolEntry::Unknown( "Unknown".to_string() ),
             };
 
             constant_pool.push( constant_pool_entry );
         }
 
+        let mut read_only_cp = constant_pool.clone();
+
+        for cp_entry in &mut constant_pool {
+            match cp_entry {
+                constantpool::ConstantPoolEntry::Class(ref mut c) => {
+                    let idx = c.parse::<usize>().unwrap(); 
+                    *c = read_only_cp[idx].utf8();
+                },
+                constantpool::ConstantPoolEntry::String(ref mut c) => {
+                    let idx = c.parse::<usize>().unwrap(); 
+                    *c = read_only_cp[idx].utf8();
+                },
+                _ => {},
+            }           
+        }
+
+        read_only_cp = constant_pool.clone();
+        for cp_entry in &mut constant_pool {
+            match cp_entry {
+                constantpool::ConstantPoolEntry::NameAndType(ref mut c) => {
+                    let name_idx = c.name.parse::<usize>().unwrap(); 
+                    c.name = read_only_cp[name_idx].utf8();
+
+                    let descriptor_idx = c.descriptor.parse::<usize>().unwrap(); 
+                    c.descriptor = read_only_cp[descriptor_idx].utf8();
+                },
+                _ => {}
+            }
+        }
+
+        read_only_cp = constant_pool.clone();
+        for cp_entry in &mut constant_pool {
+            match cp_entry {
+                constantpool::ConstantPoolEntry::FieldRef(ref mut c) => {
+                    let class_idx = c.class.parse::<usize>().unwrap(); 
+                    let name_type_idx = c.name_and_type_index; 
+                    let name_type = read_only_cp[name_type_idx as usize].name_and_type();
+
+                    c.class = read_only_cp[class_idx].class();
+                    c.field = name_type.name.clone();
+                    c.descriptor = name_type.descriptor.clone();
+                },
+                constantpool::ConstantPoolEntry::MethodRef(ref mut c) => {
+                    let idx = c.class.parse::<usize>().unwrap(); 
+                    c.class = read_only_cp[idx].class();
+                },
+                constantpool::ConstantPoolEntry::InterfaceMethodRef(ref mut c) => {
+                    let idx = c.class.parse::<usize>().unwrap(); 
+                    c.class = read_only_cp[idx].class();
+                },
+                _ => {},
+            }           
+        }
+
         constant_pool
     }
 
     fn fetch_interfaces<T: Read>(reader: &mut T) -> Vec<u16> {
-        let interfaces_count = ClassDesc::fetch_u16(reader);
+        let interfaces_count = utils::fetch_u16(reader);
         let mut interfaces = Vec::with_capacity(interfaces_count as usize);
 
         for _ in 0..interfaces_count {
-            let interface = ClassDesc::fetch_u16(reader);
+            let interface = utils::fetch_u16(reader);
             interfaces.push(interface);
         }
 
@@ -114,21 +172,22 @@ impl<'a> ClassDesc<'a> {
     }
 
     fn fetch_fields<T: Read>(reader: &mut T, constant_pool : &Vec<constantpool::ConstantPoolEntry>) -> Vec<Field> {
-        let fields_count = ClassDesc::fetch_u16(reader);
+        let fields_count = utils::fetch_u16(reader);
         let mut fields = Vec::with_capacity(fields_count as usize);
 
         for _ in 0..fields_count {
-            let access_flags = ClassDesc::fetch_u16(reader);
-            let name_index = ClassDesc::fetch_u16(reader);
+            let access_flags = utils::fetch_u16(reader);
+            let name_index = utils::fetch_u16(reader);
             let name = constant_pool[name_index as usize].utf8();
-            let descriptor_index = ClassDesc::fetch_u16(reader);
-            let attributes = ClassDesc::fetch_attributes(reader, constant_pool);
+            let descriptor_index = utils::fetch_u16(reader);
+            let descriptor = constant_pool[descriptor_index as usize].utf8();
+            let attributes = attributes::AttributeInfo::fetch_attributes(reader, constant_pool);
 
             fields.push(
                 Field {
                     access_flags,
                     name,
-                    descriptor_index,
+                    descriptor,
                     attributes,
                     value: None,
                 }
@@ -139,15 +198,15 @@ impl<'a> ClassDesc<'a> {
     }
 
     fn fetch_methods<T: Read>(reader: &mut T, constant_pool : &Vec<constantpool::ConstantPoolEntry>) -> Vec<Method> {
-        let methods_count = ClassDesc::fetch_u16(reader);
+        let methods_count = utils::fetch_u16(reader);
         let mut methods = Vec::with_capacity(methods_count as usize);
 
         for _ in 0..methods_count {
-            let access_flags = ClassDesc::fetch_u16(reader);
-            let name_index = ClassDesc::fetch_u16(reader);
+            let access_flags = utils::fetch_u16(reader);
+            let name_index = utils::fetch_u16(reader);
             let name = constant_pool[name_index as usize].utf8();
-            let descriptor_index = ClassDesc::fetch_u16(reader);
-            let attributes = ClassDesc::fetch_attributes(reader, &constant_pool);
+            let descriptor_index = utils::fetch_u16(reader);
+            let attributes = attributes::AttributeInfo::fetch_attributes(reader, &constant_pool);
 
             methods.push(
                 Method {
@@ -160,39 +219,6 @@ impl<'a> ClassDesc<'a> {
         }
 
         methods
-    }
-
-    fn fetch_attributes<T: Read>(reader: &mut T, constant_pool : &Vec<constantpool::ConstantPoolEntry>) -> Vec<attributes::AttributeInfo> {
-        let attributes_count = ClassDesc::fetch_u16(reader);
-        let mut attributes = Vec::with_capacity(attributes_count as usize);
-
-        for _ in 0..attributes_count {
-            let attribute_name_index = ClassDesc::fetch_u16(reader);
-            let attribute_length = ClassDesc::fetch_u32(reader);
-            let info = ClassDesc::fetch_bytes(reader, attribute_length as usize);
-
-            attributes.push(
-                attributes::AttributeInfo::build_attribute_info(constant_pool, attribute_name_index, info)
-            );
-        }
-
-        attributes
-    }
-
-    fn fetch_bytes<T: Read>(reader: &mut T, size : usize) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(size);
-        let mut part_reader = reader.take(size as u64);
-        part_reader.read_to_end(&mut buf).unwrap();
-
-        buf
-    }
-
-    fn fetch_u16<T: Read>(reader: &mut T) -> u16 {
-        BigEndian::read_u16(&ClassDesc::fetch_bytes(reader, 2))
-    }
-
-    fn fetch_u32<T: Read>(reader: &mut T) -> u32 {
-        BigEndian::read_u32(&ClassDesc::fetch_bytes(reader, 4))
     }
 
     pub fn flags_names(flags : u16) -> String {
@@ -252,66 +278,8 @@ impl<'a> ClassDesc<'a> {
 
             let mut i = 0;
             for constant_pool_entry in &self.constant_pool {
-                println!("cp[{}] = ", i);
+                println!("cp[{}] = {:?}", i, constant_pool_entry);
                 i = i + 1;
-                match constant_pool_entry {
-                    constantpool::ConstantPoolEntry::Class(value) => { 
-                        println!("\tClass:");
-                        println!("\t\tname_index: {}", value);
-                    },
-                    constantpool::ConstantPoolEntry::NameAndType(value) => {
-                        println!("\tNameAndtype:");
-                        println!("\t\tname_index: {} \t # {}", value.name_index, value.name_index);
-                        println!("\t\tdescriptor_index: {} \t # {}", value.descriptor_index, value.descriptor_index);
-                    },
-                    constantpool::ConstantPoolEntry::Utf8(value) => {
-                        println!("\tUTF-8:");
-                        println!("\t\tbytes: {}", value);
-                    },
-                    constantpool::ConstantPoolEntry::Integer(value) => {
-                        println!("\tInteger:");
-                        println!("\t\tbytes: {}", value.bytes);
-                    },
-                    constantpool::ConstantPoolEntry::Float(value) => {
-                        println!("\tFloat:");
-                        println!("\t\tbytes: {}", value.bytes);
-                    },
-                    constantpool::ConstantPoolEntry::MethodRef(value) => {
-                        println!("\tMethodRef:");
-                        println!("\t\tclass_index: {}", value.class_index);
-                        println!("\t\tname_and_type_index: {}", value.name_and_type_index);
-                    },
-                    constantpool::ConstantPoolEntry::FieldRef(value) => {
-                        println!("\tFieldRef:");
-                        println!("\t\tclass_index: {}", value.class_index);
-                        println!("\t\tname_and_type_index: {}", value.name_and_type_index);
-                    },
-                    constantpool::ConstantPoolEntry::InterfaceMethodRef(value) => {
-                        println!("\tInterfaceMethodRef:");
-                        println!("\t\tclass_index: {}", value.class_index);
-                        println!("\t\tname_and_type_index: {}", value.name_and_type_index);
-                    },
-                    constantpool::ConstantPoolEntry::Dynamic(value) => {
-                        println!("\tDynamic:");
-                        println!("\t\tbootstrap_method_attr_index: {}", value.bootstrap_method_attr_index);
-                        println!("\t\tname_and_type_index: {}", value.name_and_type_index);
-                    },
-                    constantpool::ConstantPoolEntry::InvokeDynamic(value) => {
-                        println!("\tInvokeDynamic:");
-                        println!("\t\tbootstrap_method_attr_index: {}", value.bootstrap_method_attr_index);
-                        println!("\t\tname_and_type_index: {}", value.name_and_type_index);
-                    },
-                    constantpool::ConstantPoolEntry::String(value) => {
-                        println!("\tString:");
-                        println!("\t\tstring_index: {}", value);
-                    },
-                    constantpool::ConstantPoolEntry::MethodHandle(value) => {
-                        println!("\tMethodHandle:");
-                        println!("\t\treference_kind: {}", value.reference_kind);
-                        println!("\t\treference_index: {}", value.reference_index);
-                    },
-                    _ => println!("Unknown"),
-                }
             }
         }
 
@@ -319,11 +287,7 @@ impl<'a> ClassDesc<'a> {
             println!("Fields:");
 
             for field_entry in &self.fields {
-                println!("\t Access flags: {}, Name: {}, descritor_index: {}", 
-                    ClassDesc::flags_names(field_entry.access_flags),
-                    field_entry.name,
-                    field_entry.descriptor_index,
-                );
+                println!("\t {:?}", field_entry);
                 if field_entry.attributes.len() > 0 {
                     println!("\tAttributes: ");
 
