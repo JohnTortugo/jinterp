@@ -16,7 +16,6 @@ fn main() {
     let file = File::open(filename).expect("File not found.");
     let mut buf_reader = BufReader::new(file);
     let mut startup_class = spec::ClassDesc::new(&mut buf_reader);
-    let mut interpreter = interpreter::Interpreter::new(&mut startup_class, filename);
-
+    let mut interpreter = interpreter::Interpreter::new(&mut startup_class);
     interpreter.run();
 }
